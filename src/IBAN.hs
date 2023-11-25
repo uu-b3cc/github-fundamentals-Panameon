@@ -4,6 +4,8 @@
 -- hallo
 -- http://ics.uu.nl/docs/vakken/b3cc/assessment.html
 --
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 module IBAN (
 
   Mode(..), Config(..),
@@ -12,8 +14,8 @@ module IBAN (
 ) where
 
 import Control.Concurrent
-import Crypto.Hash.SHA1
-import Data.Atomics                                       ( readForCAS, casIORef, peekTicket )
+--import Crypto.Hash.SHA1
+--import Data.Atomics                                       ( readForCAS, casIORef, peekTicket )
 import Data.IORef
 import Data.List                                          ( elemIndex )
 import Data.Word
@@ -23,6 +25,8 @@ import System.IO
 import Data.ByteString.Char8                              ( ByteString )
 import qualified Data.ByteString                          as B
 import qualified Data.ByteString.Char8                    as B8
+import Text.Read.Lex (numberToFixed)
+import GHC.Generics (DecidedStrictness(DecidedLazy))
 
 
 -- -----------------------------------------------------------------------------
@@ -31,9 +35,16 @@ import qualified Data.ByteString.Char8                    as B8
 
 -- Perform the m-test on 'number'
 mtest :: Int -> Int -> Bool
-mtest m number =
+mtest m number = value `mod` m == 0
   -- Implement the m-test here!
-  undefined
+  where
+    (x:xs) = digits number
+    value = x * (-1) + sum (zipWith (*) xs [2 ..])
+
+digits :: (Num int, Ord int, Integral int) => int -> [int]
+digits number
+  |number < 10 = [number]
+  |otherwise   = (number `mod` 10) : digits (number `div` 10)
 
 
 -- -----------------------------------------------------------------------------
@@ -41,9 +52,19 @@ mtest m number =
 -- -----------------------------------------------------------------------------
 
 count :: Config -> IO Int
-count config = do
+count (Config l u m t) = do
   -- Implement count mode here!
-  undefined
+  nr <- newIORef l
+  writeIORef nr 0
+  
+  forkIO (do
+    temp <- readIORef nr
+    --add one
+    writeIORef nr 1
+    )
+
+  result <- readIORef nr
+  readIORef nr
 
 
 -- -----------------------------------------------------------------------------
@@ -106,5 +127,5 @@ forkThreads n work = do
 
 -- Checks whether 'value' has the expected hash.
 --
-checkHash :: ByteString -> String -> Bool
-checkHash expected value = expected == hash (B8.pack value)
+--checkHash :: ByteString -> String -> Bool
+--checkHash expected value = expected == hash (B8.pack value)
