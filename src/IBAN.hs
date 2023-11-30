@@ -1,7 +1,7 @@
 --
 -- INFOB3CC Concurrency
 -- Practical 1: IBAN calculator
--- hallo
+-- 
 -- http://ics.uu.nl/docs/vakken/b3cc/assessment.html
 --
 {-# OPTIONS_GHC -Wno-unused-imports #-}
@@ -14,8 +14,8 @@ module IBAN (
 ) where
 
 import Control.Concurrent
---import Crypto.Hash.SHA1
---import Data.Atomics                                       ( readForCAS, casIORef, peekTicket )
+import Crypto.Hash.SHA1
+import Data.Atomics                                       ( readForCAS, casIORef, peekTicket )
 import Data.IORef
 import Data.List                                          ( elemIndex )
 import Data.Word
@@ -27,6 +27,7 @@ import qualified Data.ByteString                          as B
 import qualified Data.ByteString.Char8                    as B8
 import Text.Read.Lex (numberToFixed)
 import GHC.Generics (DecidedStrictness(DecidedLazy))
+import Control.Monad (when, replicateM_)
 
 
 -- -----------------------------------------------------------------------------
@@ -53,19 +54,49 @@ digits number
 
 count :: Config -> IO Int
 count (Config l u m t) = do
-  -- Implement count mode here!
-  nr <- newIORef l
-  writeIORef nr 0
-  
-  forkIO (do
-    temp <- readIORef nr
-    --add one
-    writeIORef nr 1
-    )
+  -- Implement count mode here!  use: casIORef, readForCAS, peekTicket, new-, read-, writeIORef
+  let start = 0 ::Int
+  counter <- newIORef start
 
-  result <- readIORef nr
-  readIORef nr
+  createThreads counter m (threadBounds l u t)
 
+  readIORef counter
+
+
+  where
+    createThreads :: IORef Int -> Int -> [(Int, Int)] -> IO()
+    createThreads _ _ [] = threadDelay 1000000
+    createThreads c m (x:xs) = do
+      forkIO $ loop c m x
+      createThreads c m xs
+
+
+addOne :: IORef Int -> IO()
+addOne c = do
+  ref <- readIORef c
+  writeIORef c (ref+1)
+
+loop :: IORef Int -> Int -> (Int, Int) -> IO()
+loop c m (l, u)
+  | l >= u       = threadDelay 1
+  | l == (u - 1) = test c m l
+  | otherwise    = do
+    test c m l
+    loop c m (l+1, u)
+
+test :: IORef Int -> Int -> Int -> IO()
+test c m nr = do
+  if (mtest m nr) then addOne c else threadDelay 1
+
+threadBounds :: Int -> Int -> Int -> [(Int, Int)]
+threadBounds l u t = bounds (u-l) l t t
+
+bounds :: Int -> Int -> Int -> Int -> [(Int, Int)]
+bounds _ _ _ 0        = []
+bounds nrs tLower tAmount tCurrent = (tLower, tUpper) : bounds nrs tUpper tAmount (tCurrent - 1)
+ where
+  tUpper = tLower + (nrs `div` tAmount) + addRest
+  addRest = if (nrs `mod` tAmount) > (tAmount - tCurrent) then 1 else 0
 
 -- -----------------------------------------------------------------------------
 -- 2. List mode (3pt)
@@ -126,6 +157,6 @@ forkThreads n work = do
       return var
 
 -- Checks whether 'value' has the expected hash.
---
---checkHash :: ByteString -> String -> Bool
---checkHash expected value = expected == hash (B8.pack value)
+
+checkHash :: ByteString -> String -> Bool
+checkHash expected value = expected == hash (B8.pack value)
